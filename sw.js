@@ -1,7 +1,7 @@
 // Service worker — Photobooth (PWA générique et personnalisable)
 // Mets à jour ce numéro à chaque nouvelle version du site pour forcer
 // les téléphones à récupérer la dernière version au lieu de l'ancienne.
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = 'photobooth-' + CACHE_VERSION;
 
 const APP_SHELL = [
