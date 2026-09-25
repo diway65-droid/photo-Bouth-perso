@@ -14,6 +14,12 @@
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500;1,9..144,600&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<!-- SDKs Firebase officiels -->
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-storage-compat.js"></script>
+
 <style>
   :root{
     --bg-cream: #faf7f0;
@@ -136,7 +142,7 @@
     box-shadow:0 3px 10px rgba(0,0,0,.03);
   }
   
-  /* ---- Défi bouton & badge ---- */
+  /* Défi bouton & badge */
   .btn-challenge{
     background:var(--bg-cream-card);
     color:var(--gold-deep);
@@ -192,7 +198,7 @@
     z-index:2;
   }
 
-  /* ---- Caméra & cadres adoucis ---- */
+  /* Caméra & cadres adoucis */
   #screen-camera{padding:calc(env(safe-area-inset-top,0px) + 8px) 20px 0;}
   .cam-frame-outer{
     position:relative;
@@ -280,7 +286,7 @@
     box-shadow:0 4px 12px rgba(0,0,0,.05);
   }
 
-  /* ---- Écran résultat ---- */
+  /* Écran résultat */
   #screen-result{padding:20px;}
   .result-wrap{
     position:relative;
@@ -325,7 +331,7 @@
   @keyframes spin{ to{ transform:rotate(360deg); } }
   .qr-error{ color:#b5583a; font-size:.85rem; max-width:240px; }
 
-  /* ---- Réglages ---- */
+  /* Réglages */
   .panel{
     background:#ffffff; 
     border-radius:20px; 
@@ -377,7 +383,7 @@
   <div class="start-inner">
     <div class="ornament">◆</div>
     <p class="eyebrow" id="eyebrow-text">PHOTOBOOTH</p>
-    <h1 class="brand" id="event-title">Votre Événement</h1>
+    <h1 class="brand" id="event-title">Mimie Doudou 40 ans</h1>
     <p class="sub">Laissez-nous vos souvenirs photos de la soirée 📸<br>Installez-vous, souriez, et c'est parti !</p>
     <button class="btn-main" id="btn-start">Prendre une photo</button>
   </div>
@@ -395,7 +401,7 @@
     </div>
     <div class="polaroid-caption">
       <span class="cap-diamond"></span>
-      <span class="cap-text" id="cap-text">Votre Événement</span>
+      <span class="cap-text" id="cap-text">Mimie Doudou 40 ans</span>
       <span class="cap-diamond"></span>
     </div>
   </div>
@@ -411,7 +417,7 @@
   <div class="result-wrap">
     <img id="result-img" alt="Photo souvenir">
   </div>
-  <p class="hint" style="margin:12px 0 0; text-align:center;">✅ Photo déjà enregistrée automatiquement sur cet appareil</p>
+  <p class="hint" style="margin:12px 0 0; text-align:center;">✅ Photo enregistrée sur cet appareil & envoyée au diaporama</p>
   <div class="result-actions">
     <button class="btn-secondary" id="btn-retake">🔄 Refaire la photo</button>
     <button class="btn-secondary" id="btn-qr">📲 QR pour mon téléphone</button>
@@ -426,8 +432,8 @@
   <div class="panel">
     <h2>Réglages</h2>
     <label for="event-name">Nom de l'événement</label>
-    <input id="event-name" type="text" placeholder="Ex. Mariage de Léa & Tom">
-    <p class="hint" style="margin:-10px 0 16px;">Ce nom s'affiche sur l'écran d'accueil et est imprimé sur le cadre de chaque photo.</p>
+    <input id="event-name" type="text" placeholder="Ex. Mimie Doudou 40 ans">
+    <p class="hint" style="margin:-10px 0 16px;">Ce nom s'affiche sur l'accueil et est imprimé sur chaque photo.</p>
 
     <div class="divider"></div>
 
@@ -435,7 +441,7 @@
     <input id="gallery-link" type="url" placeholder="https://photos.app.goo.gl/...">
     <button class="btn-main" id="btn-save-link" style="width:100%; padding:12px; border-radius:12px;">Enregistrer</button>
     <div id="qr-box"></div>
-    <p class="hint">Ce QR code peut être affiché sur une pancarte ou l'écran d'accueil : les invités le scannent pour retrouver toutes les photos.</p>
+    <p class="hint">Ce QR code peut être affiché sur l'écran ou une pancarte pour accéder à l'album global.</p>
 
     <p class="wake-status" id="wake-status"></p>
   </div>
@@ -451,6 +457,44 @@
   const screens = ['start','camera','result','settings'];
   function show(name){
     screens.forEach(s => $('screen-'+s).classList.toggle('active', s === name));
+  }
+
+  // ---------- Initialisation Firebase (Exacte à ta version Mimie Doudou) ----------
+  const firebaseConfig = {
+    apiKey: "AIzaSyAHCUcWse5QpNPxWQKYZqT-4elxIxkAO3s",
+    authDomain: "mimie-doudou-40-ans.firebaseapp.com",
+    projectId: "mimie-doudou-40-ans",
+    storageBucket: "mimie-doudou-40-ans.firebasestorage.app",
+    messagingSenderId: "745270670876",
+    appId: "1:745270670876:web:7bdadd220d43fd7ec691d9"
+  };
+  let fbReady = false;
+  try{
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    fbReady = true;
+  }catch(e){ console.warn('Firebase init failed', e); }
+
+  let currentUploadedPhotoUrl = null;
+
+  async function pushToSlideshow(dataUrl, filename){
+    if(!fbReady) return;
+    try{
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const ref = firebase.storage().ref().child('photos/' + filename);
+      await ref.put(blob, { contentType: 'image/jpeg' });
+      const url = await ref.getDownloadURL();
+      currentUploadedPhotoUrl = url;
+      await firebase.firestore().collection('photos').add({
+        url,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      console.log("Photo synchronisée avec Firebase :", url);
+    }catch(e){ 
+      console.warn('Erreur Firebase Slideshow :', e); 
+    }
   }
 
   // ---------- Web Audio beeps ----------
@@ -475,7 +519,7 @@
   }
 
   // ---------- Nom de l'événement ----------
-  const DEFAULT_NAME = 'Votre Événement';
+  const DEFAULT_NAME = 'Mimie Doudou 40 ans';
   function getEventName(){
     return (localStorage.getItem('photobooth_event_name') || '').trim();
   }
@@ -494,7 +538,7 @@
     applyEventName();
   });
 
-  // ---------- Défis ----------
+  // ---------- Défis (syntaxe corrigée) ----------
   const THEMES = [
     "La pire grimace",
     "Ne pas sourire",
@@ -509,10 +553,10 @@
     "Bisous volés",
     "Performance artistique",
     "Avec la langue",
-    "Hot & Sexy… ",
+    "Hot & Sexy… mais raté",
     "Saut en l'air synchronisé",
-    "La tête du lendemain matin" 
-    "Le selfie des influenceurs" 
+    "La tête du lendemain matin",
+    "Le selfie des influenceurs",
     "Le boys band / girls band des années 90"
   ];
   let currentTheme = null;
@@ -607,7 +651,7 @@
   $('btn-home').onclick = () => { resetChallenge(); show('start'); if(stream) stream.getTracks().forEach(t=>t.stop()); };$('btn-switch').onclick = async () => { facing = (facing==='user') ? 'environment' : 'user'; await startCamera(); };
 
   // ---------- Déclencheur & Capture ----------
-  let photoCount = parseInt(localStorage.getItem('photobooth_count')||'0', 10);
+  let photoCount = parseInt(localStorage.getItem('mimidoudou_count')||'0', 10);
 
   $('btn-shutter').onclick = () => {
     const cd = $('countdown');
@@ -637,7 +681,6 @@
     ctx.restore();
   }
 
-  // Permet de tracer un rectangle avec coins arrondis sur canvas
   function roundRect(ctx, x, y, width, height, radius) {
     ctx.beginPath();
     ctx.moveTo(x + radius, y);
@@ -650,6 +693,25 @@
     ctx.lineTo(x, y + radius);
     ctx.quadraticCurveTo(x, y, x + radius, y);
     ctx.closePath();
+  }
+
+  // Sauvegarde locale propre via Blob URL (réduit les demandes répétées de Chrome)
+  function saveToDevice(dataUrl, filename){
+    fetch(dataUrl)
+      .then(res => res.blob())
+      .then(blob => {
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+        }, 150);
+      })
+      .catch(err => console.warn('Sauvegarde locale :', err));
   }
 
   function capture(){
@@ -726,46 +788,41 @@
     const dataUrl = canvas.toDataURL('image/jpeg', 0.94);
     $('result-img').src = dataUrl;
     $('qr-transfer-box').innerHTML = '';
+    
     photoCount += 1;
-    localStorage.setItem('photobooth_count', photoCount);
+    localStorage.setItem('mimidoudou_count', photoCount);
     $('counter-pill').textContent = `Photo n°${photoCount} de la soirée`;
-    const filename = `photobooth-${Date.now()}.jpg`;
+    
+    const filename = `mimidoudou-40ans-${Date.now()}.jpg`;
+
+    // Sauvegarde tablette
     saveToDevice(dataUrl, filename);
+
+    // Envoi Firebase (Storage + Firestore)
+    currentUploadedPhotoUrl = null;
+    pushToSlideshow(dataUrl, filename);
+
     show('result');
   }
 
-  function saveToDevice(dataUrl, filename){
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-
-  // ---------- QR code individuel ----------
+  // ---------- QR code individuel vers Firebase ----------
   async function startQrTransfer(){
     const box = $('qr-transfer-box');
-    box.innerHTML = `<div class="qr-card"><div class="qr-spinner"></div><p>Envoi de la photo en cours…</p></div>`;
+    box.innerHTML = `<div class="qr-card"><div class="qr-spinner"></div><p>Synchronisation de la photo…</p></div>`;
 
-    try{
-      const res = await fetch($('result-img').src);
-      const blob = await res.blob();
-      const form = new FormData();
-      form.append('reqtype', 'fileupload');
-      form.append('time', '1h');
-      form.append('fileToUpload', blob, `photobooth-${Date.now()}.jpg`);
+    if (!currentUploadedPhotoUrl) {
+      let attempts = 0;
+      while (!currentUploadedPhotoUrl && attempts < 16) {
+        await new Promise(r => setTimeout(r, 500));
+        attempts++;
+      }
+    }
 
-      const uploadRes = await fetch('https://litterbox.catbox.moe/resources/internals/api.php', {
-        method:'POST', body: form
-      });
-      const url = (await uploadRes.text()).trim();
-      if(!url.startsWith('http')) throw new Error('Réponse inattendue du service');
-
-      box.innerHTML = `<div class="qr-card"><div id="qr-transfer-code"></div><p>Scannez avec votre smartphone pour télécharger votre photo (disponible 1h)</p></div>`;
-      new QRCode($('qr-transfer-code'), { text: url, width:170, height:170, colorDark:"#141a26", colorLight:"#ffffff" });
-    }catch(e){
-      box.innerHTML = `<div class="qr-card"><p class="qr-error">Envoi impossible. La photo est bien conservée sur la tablette / l'appareil.</p></div>`;
+    if (currentUploadedPhotoUrl) {
+      box.innerHTML = `<div class="qr-card"><div id="qr-transfer-code"></div><p>Scannez pour télécharger directement la photo sur votre téléphone</p></div>`;
+      new QRCode($('qr-transfer-code'), { text: currentUploadedPhotoUrl, width:170, height:170, colorDark:"#141a26", colorLight:"#ffffff" });
+    } else {
+      box.innerHTML = `<div class="qr-card"><p class="qr-error">Connexion trop lente ou indisponible. La photo est bien conservée sur la tablette.</p></div>`;
     }
   }
   $('btn-qr').onclick = startQrTransfer;
@@ -779,7 +836,7 @@
   };
 
   // ---------- Réglages ----------
-  const savedLink = localStorage.getItem('photobooth_gallery_link') || '';
+  const savedLink = localStorage.getItem('photobooth_gallery_link') || 'https://photos.app.goo.gl/e8kuWQRp4oqJf3WG8';
   $('gallery-link').value = savedLink;
 
   function renderQR(link){
