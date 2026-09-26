@@ -287,10 +287,10 @@
   }
 
   /* Écran résultat */
-  #screen-result{padding:20px;}
+  #screen-result{padding:20px; overflow-y:auto;}
   .result-wrap{
     position:relative;
-    width:min(92vw, 640px);
+    width:min(92vw, 560px);
     border-radius:20px;
     overflow:hidden;
     border:1px solid rgba(191,161,95,.3);
@@ -459,7 +459,48 @@
     screens.forEach(s => $('screen-'+s).classList.toggle('active', s === name));
   }
 
-  // ---------- Initialisation Firebase (Exacte à ta version Mimie Doudou) ----------
+  // ==========================================
+  // GESTION ANTI-MISE EN VEILLE (WAKE LOCK)
+  // ==========================================
+  let wakeLock = null;
+
+  async function requestWakeLock() {
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        updateWakeStatus('☀️ Maintien de l’écran allumé : Actif');
+        wakeLock.addEventListener('release', () => {
+          updateWakeStatus('⚠️ Maintien de l’écran : Relâché');
+          wakeLock = null;
+        });
+      } catch (err) {
+        updateWakeStatus(`❌ Wake Lock non actif : ${err.message}`);
+      }
+    } else {
+      updateWakeStatus("⚠️ API Wake Lock non supportée sur ce navigateur");
+    }
+  }
+
+  function updateWakeStatus(txt) {
+    const el = $('wake-status');
+    if (el) el.textContent = txt;
+  }
+
+  // Lancement automatique dès le premier clic ou interaction
+  document.addEventListener('pointerdown', () => {
+    if (!wakeLock) requestWakeLock();
+  }, { once: true });
+
+  // Réactivation quand la fenêtre repasse au premier plan
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      requestWakeLock();
+    }
+  });
+
+  // ==========================================
+  // INITIALISATION FIREBASE
+  // ==========================================
   const firebaseConfig = {
     apiKey: "AIzaSyAHCUcWse5QpNPxWQKYZqT-4elxIxkAO3s",
     authDomain: "mimie-doudou-40-ans.firebaseapp.com",
@@ -497,7 +538,9 @@
     }
   }
 
-  // ---------- Web Audio beeps ----------
+  // ==========================================
+  // EFFETS SONORES (WEB AUDIO API)
+  // ==========================================
   let actx;
   function beep(freq, dur, type='sine', vol=.18){
     try{
@@ -518,7 +561,9 @@
     setTimeout(()=>beep(300, .09, 'square', .12), 40);
   }
 
-  // ---------- Nom de l'événement ----------
+  // ==========================================
+  // CONFIGURATION & TITRE
+  // ==========================================
   const DEFAULT_NAME = 'Mimie Doudou 40 ans';
   function getEventName(){
     return (localStorage.getItem('photobooth_event_name') || '').trim();
@@ -538,7 +583,38 @@
     applyEventName();
   });
 
-  // ---------- Défis (syntaxe corrigée) ----------
+  // Compteur de photos
+  let photoCount = parseInt(localStorage.getItem('photobooth_count') || '0', 10);
+  function updateCountBadge(){
+    $('counter-pill').textContent = `Photo n°${photoCount} de la soirée`;
+  }
+  updateCountBadge();
+
+  // QR Code global dans les réglages
+  let settingsQr = null;
+  function updateSettingsQr(){
+    const link = localStorage.getItem('photobooth_gallery_link') || '';
+    $('gallery-link').value = link;
+    $('qr-box').innerHTML = '';
+    if(link){
+      settingsQr = new QRCode($('qr-box'), {
+        text: link,
+        width: 140,
+        height: 140,
+        colorDark: "#222938",
+        colorLight: "#faf7f0"
+      });
+    }
+  }
+  updateSettingsQr();
+  $('btn-save-link').addEventListener('click', () => {
+    localStorage.setItem('photobooth_gallery_link', $('gallery-link').value.trim());
+    updateSettingsQr();
+  });
+
+  // ==========================================
+  // DÉFIS DU PHOTOBOOTH
+  // ==========================================
   const THEMES = [
     "La pire grimace",
     "Ne pas sourire",
@@ -562,8 +638,8 @@
   let currentTheme = null;
   let lastTheme = null;
   let rolling = false;
-
   let deck = [];
+
   function shuffle(arr){
     const a = arr.slice();
     for(let i = a.length - 1; i > 0; i--){
@@ -621,270 +697,305 @@
         beep(880, .18, 'sine', .2);
         badge.classList.add('landed');
         btn.disabled = false;
-        btn.textContent = '🔄 Changer de défi';
+        btn.textContent = 'Autre défi';
         btn.classList.add('has-challenge');
         rolling = false;
       }
     }
-    setTimeout(tick, delay);
+    tick();
   }
+  $('btn-challenge').addEventListener('click', rollChallenge);
 
-  $('btn-challenge').onclick = () => rollChallenge();
-
-  // ---------- Caméra ----------
+  // ==========================================
+  // GESTION DU FLUX CAMÉRA
+  // ==========================================
+  let currentFacing = 'user';
   let stream = null;
-  let facing = 'user';
+  const video = $('video');
+
   async function startCamera(){
-    if(stream){ stream.getTracks().forEach(t=>t.stop()); }
+    stopCamera();
     try{
       stream = await navigator.mediaDevices.getUserMedia({
-        video:{ facingMode: facing, width:{ideal:1280}, height:{ideal:960} },
-        audio:false
+        video: {
+          facingMode: currentFacing,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
       });
-      $('video').srcObject = stream;
+      video.srcObject = stream;
+      video.style.transform = (currentFacing === 'user') ? 'scaleX(-1)' : 'none';
     }catch(err){
       alert("Impossible d'accéder à la caméra : " + err.message);
     }
   }
 
-  $('btn-start').onclick = async () => { resetChallenge(); show('camera'); await startCamera(); requestWakeLock(); };
-  $('btn-home').onclick = () => { resetChallenge(); show('start'); if(stream) stream.getTracks().forEach(t=>t.stop()); };$('btn-switch').onclick = async () => { facing = (facing==='user') ? 'environment' : 'user'; await startCamera(); };
+  function stopCamera(){
+    if(stream){
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+  }
 
-  // ---------- Déclencheur & Capture ----------
-  let photoCount = parseInt(localStorage.getItem('mimidoudou_count')||'0', 10);
+  $('btn-switch').addEventListener('click', () => {
+    currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
+    startCamera();
+  });
 
-  $('btn-shutter').onclick = () => {
+  // Navigation
+  $('btn-start').addEventListener('click', () => {
+    requestWakeLock();
+    resetChallenge();
+    show('camera');
+    startCamera();
+  });
+
+  $('btn-home').addEventListener('click', () => {
+    stopCamera();
+    show('start');
+  });
+
+  $('btn-settings').addEventListener('click', () => {
+    show('settings');
+  });
+
+  $('btn-back-settings').addEventListener('click', () => {
+    show('start');
+  });
+
+  // ==========================================
+  // CAPTURE ET COMPOSITION POLAROID
+  // ==========================================
+  let isCapturing = false;
+  let lastCapturedDataUrl = null;
+
+  $('btn-shutter').addEventListener('click', () => {
+    if(isCapturing) return;
+    isCapturing = true;
+    $('btn-shutter').style.pointerEvents = 'none';
+
+    let count = 3;
     const cd = $('countdown');
-    let n = 3;
-    cd.textContent = n;
+    cd.textContent = count;
     cd.classList.add('active');
-    beep(660, .12, 'sine', .15);
-    const iv = setInterval(() => {
-      n -= 1;
-      if(n > 0){
-        cd.textContent = n;
-        beep(660, .12, 'sine', .15);
+    beep(600, .08, 'sine', .2);
+
+    const timer = setInterval(() => {
+      count--;
+      if(count > 0){
+        cd.textContent = count;
+        beep(600, .08, 'sine', .2);
       } else {
-        clearInterval(iv);
+        clearInterval(timer);
         cd.classList.remove('active');
-        capture();
+        takePicture();
       }
-    }, 800);
-  };
+    }, 1000);
+  });
 
-  function drawDiamond(ctx, cx, cy, s, color){
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(Math.PI/4);
-    ctx.fillStyle = color;
-    ctx.fillRect(-s/2, -s/2, s, s);
-    ctx.restore();
-  }
-
-  function roundRect(ctx, x, y, width, height, radius) {
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
-    ctx.closePath();
-  }
-
-  // Sauvegarde locale propre via Blob URL (réduit les demandes répétées de Chrome)
-  function saveToDevice(dataUrl, filename){
-    fetch(dataUrl)
-      .then(res => res.blob())
-      .then(blob => {
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(blobUrl);
-        }, 150);
-      })
-      .catch(err => console.warn('Sauvegarde locale :', err));
-  }
-
-  function capture(){
+  function takePicture(){
+    const flash = $('flash');
+    flash.classList.add('go');
     shutterSound();
-    $('flash').classList.remove('go'); void $('flash').offsetWidth; $('flash').classList.add('go');
 
-    const video = $('video');
+    setTimeout(() => {
+      flash.classList.remove('go');
+      renderPolaroid();
+      stopCamera();
+      show('result');
+      isCapturing = false;
+      $('btn-shutter').style.pointerEvents = 'auto';
+    }, 350);
+  }
+
+  function renderPolaroid(){
     const canvas = $('canvas');
-
-    const PHOTO_W = 1488, PHOTO_H = 1054;
-    const marginSide = Math.round(PHOTO_W * 0.05);
-    const marginTop = Math.round(PHOTO_H * 0.05);
-    const marginBottom = Math.round(PHOTO_H * 0.22);
-    const W = PHOTO_W + marginSide*2;
-    const H = marginTop + PHOTO_H + marginBottom;
-
-    canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // Fond blanc/crème très lumineux
-    ctx.fillStyle = '#ffffff';
-    roundRect(ctx, 0, 0, W, H, 36);
-    ctx.fill();
+    // Dimensions standard Polaroid haute résolution
+    const targetW = 1200;
+    const targetH = 1480;
+    canvas.width = targetW;
+    canvas.height = targetH;
 
-    // Rendu photo avec coins légèrement arrondis
-    const vw = video.videoWidth, vh = video.videoHeight;
-    const photoRatio = PHOTO_W/PHOTO_H, videoRatio = vw/vh;
+    // Fond blanc Polaroid
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, targetW, targetH);
+
+    // Marges
+    const marginX = 60;
+    const marginTop = 60;
+    const photoW = targetW - (marginX * 2);
+    const photoH = 1120;
+
+    // Découpe et placement du flux vidéo (crop cover)
+    const vw = video.videoWidth || 1280;
+    const vh = video.videoHeight || 720;
+    const ratioVideo = vw / vh;
+    const ratioTarget = photoW / photoH;
+
     let sx, sy, sw, sh;
-    if(videoRatio > photoRatio){ sh = vh; sw = vh*photoRatio; sx=(vw-sw)/2; sy=0; }
-    else { sw = vw; sh = vw/photoRatio; sx=0; sy=(vh-sh)/2; }
+    if(ratioVideo > ratioTarget){
+      sh = vh;
+      sw = vh * ratioTarget;
+      sx = (vw - sw) / 2;
+      sy = 0;
+    } else {
+      sw = vw;
+      sh = vw / ratioTarget;
+      sx = 0;
+      sy = (vh - sh) / 2;
+    }
 
     ctx.save();
-    roundRect(ctx, marginSide, marginTop, PHOTO_W, PHOTO_H, 22);
-    ctx.clip();
-    ctx.translate(marginSide + PHOTO_W, marginTop); ctx.scale(-1,1);
-    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, PHOTO_W, PHOTO_H);
+    // Inversion miroir si caméra avant
+    if(currentFacing === 'user'){
+      ctx.translate(marginX + photoW, marginTop);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, photoW, photoH);
+    } else {
+      ctx.drawImage(video, sx, sy, sw, sh, marginX, marginTop, photoW, photoH);
+    }
     ctx.restore();
 
-    const hasChallenge = !!currentTheme;
+    // Bordure subtile photo
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(marginX, marginTop, photoW, photoH);
 
-    // Bordure fine dorée et arrondie autour de la photo
-    ctx.strokeStyle = 'rgba(191,161,95,.5)';
-    ctx.lineWidth = 3;
-    roundRect(ctx, marginSide, marginTop, PHOTO_W, PHOTO_H, 22);
-    ctx.stroke();
-
-    // Légende
-    const capFontPx = Math.round(marginBottom * (hasChallenge ? 0.27 : 0.32));
-    const capY = marginTop + PHOTO_H + marginBottom * (hasChallenge ? 0.66 : 0.5);
-
-    if(hasChallenge){
-      const chalFontPx = Math.round(marginBottom * 0.17);
-      ctx.font = `700 ${chalFontPx}px "Manrope", sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#8c733e';
-      const chalY = marginTop + PHOTO_H + marginBottom * 0.25;
-      ctx.fillText(`DÉFI · ${currentTheme.toUpperCase()}`, W/2, chalY);
-    }
-
-    ctx.font = `italic 600 ${capFontPx}px "Fraunces", serif`;
+    // Texte bas de page
+    const textCenterY = marginTop + photoH + ((targetH - (marginTop + photoH)) / 2) + 6;
+    ctx.fillStyle = '#141a26';
+    ctx.font = 'italic 600 48px "Fraunces", serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#141a26';
-    const capText = getEventName() || DEFAULT_NAME;
-    const textWidth = ctx.measureText(capText).width;
-    ctx.fillText(capText, W/2, capY);
 
-    const diamondSize = marginBottom * 0.11;
-    const gap = W * 0.028;
-    drawDiamond(ctx, W/2 - textWidth/2 - gap, capY, diamondSize, '#bfa15f');
-    drawDiamond(ctx, W/2 + textWidth/2 + gap, capY, diamondSize, '#bfa15f');
+    const caption = (getEventName() || DEFAULT_NAME);
+    ctx.fillText(caption, targetW / 2, textCenterY);
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.94);
-    $('result-img').src = dataUrl;
-    $('qr-transfer-box').innerHTML = '';
-    
-    photoCount += 1;
-    localStorage.setItem('mimidoudou_count', photoCount);
-    $('counter-pill').textContent = `Photo n°${photoCount} de la soirée`;
-    
-    const filename = `mimidoudou-40ans-${Date.now()}.jpg`;
+    // Décorations losanges dorés de chaque côté du titre
+    const metrics = ctx.measureText(caption);
+    const textW = metrics.width;
+    const diamondDist = (textW / 2) + 32;
 
-    // Sauvegarde tablette
-    saveToDevice(dataUrl, filename);
+    function drawDiamond(cx, cy, size){
+      ctx.save();
+      ctx.fillStyle = '#bfa15f';
+      ctx.translate(cx, cy);
+      ctx.rotate(45 * Math.PI / 180);
+      ctx.fillRect(-size/2, -size/2, size, size);
+      ctx.restore();
+    }
+    drawDiamond((targetW / 2) - diamondDist, textCenterY, 12);
+    drawDiamond((targetW / 2) + diamondDist, textCenterY, 12);
 
-    // Envoi Firebase (Storage + Firestore)
+    // Si un défi était sélectionné, on l'incruste délicatement en haut de l'image
+    if(currentTheme){
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(marginX + 20, marginTop + 20, 460, 48);
+      ctx.fillStyle = '#bfa15f';
+      ctx.font = '800 20px "Manrope", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`DÉFI : ${currentTheme.toUpperCase()}`, marginX + 36, marginTop + 51);
+    }
+
+    // Récupération de l'image et sauvegarde locale
+    lastCapturedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    $('result-img').src = lastCapturedDataUrl;
+
+    photoCount++;
+    localStorage.setItem('photobooth_count', photoCount);
+    updateCountBadge();
+
+    const filename = `photo_${Date.now()}.jpg`;
+
+    // Téléchargement discret sur l'appareil pour sauvegarde
+    const a = document.createElement('a');
+    a.href = lastCapturedDataUrl;
+    a.download = filename;
+    a.click();
+
+    // Envoi au Cloud / Diaporama
     currentUploadedPhotoUrl = null;
-    pushToSlideshow(dataUrl, filename);
-
-    show('result');
+    $('qr-transfer-box').innerHTML = '';
+    pushToSlideshow(lastCapturedDataUrl, filename);
   }
 
-  // ---------- QR code individuel vers Firebase ----------
-  async function startQrTransfer(){
-    const box = $('qr-transfer-box');
-    box.innerHTML = `<div class="qr-card"><div class="qr-spinner"></div><p>Synchronisation de la photo…</p></div>`;
+  // ==========================================
+  // ÉCRAN RÉSULTAT & ACTIONS
+  // ==========================================
+  $('btn-retake').addEventListener('click', () => {$('qr-transfer-box').innerHTML = '';
+    show('camera');
+    startCamera();
+  });
 
-    if (!currentUploadedPhotoUrl) {
-      let attempts = 0;
-      while (!currentUploadedPhotoUrl && attempts < 16) {
-        await new Promise(r => setTimeout(r, 500));
-        attempts++;
-      }
-    }
-
-    if (currentUploadedPhotoUrl) {
-      box.innerHTML = `<div class="qr-card"><div id="qr-transfer-code"></div><p>Scannez pour télécharger directement la photo sur votre téléphone</p></div>`;
-      new QRCode($('qr-transfer-code'), { text: currentUploadedPhotoUrl, width:170, height:170, colorDark:"#141a26", colorLight:"#ffffff" });
-    } else {
-      box.innerHTML = `<div class="qr-card"><p class="qr-error">Connexion trop lente ou indisponible. La photo est bien conservée sur la tablette.</p></div>`;
-    }
-  }
-  $('btn-qr').onclick = startQrTransfer;
-
-  $('btn-retake').onclick = async () => { show('camera'); await startCamera(); };
-
-  $('btn-done').onclick = () => {
-    resetChallenge();
+  $('btn-done').addEventListener('click', () => {$('qr-transfer-box').innerHTML = '';
     show('start');
-    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
-  };
+  });
 
-  // ---------- Réglages ----------
-  const savedLink = localStorage.getItem('photobooth_gallery_link') || 'https://photos.app.goo.gl/e8kuWQRp4oqJf3WG8';
-  $('gallery-link').value = savedLink;
-
-  function renderQR(link){
-    const box = $('qr-box');
+  // Génération du QR Code pour récupérer la photo prise
+  $('btn-qr').addEventListener('click', () => {
+    const box = $('qr-transfer-box');
     box.innerHTML = '';
-    if(!link) return;
-    new QRCode(box, { text: link, width:180, height:180, colorDark:"#141a26", colorLight:"#faf7f0" });
-  }
-  renderQR(savedLink);
 
-  $('btn-settings').onclick = () => show('settings');
-  $('btn-back-settings').onclick = () => show('start');$('btn-save-link').onclick = () => {
-    const val = $('gallery-link').value.trim();
-    localStorage.setItem('photobooth_gallery_link', val);
-    renderQR(val);
-  };
+    const card = document.createElement('div');
+    card.className = 'qr-card';
 
-  // ---------- Wake Lock ----------
-  let wakeLock = null;
-  async function requestWakeLock(){
-    if(!('wakeLock' in navigator)) { $('wake-status').textContent = ''; return; }
-    try{
-      wakeLock = await navigator.wakeLock.request('screen');
-      $('wake-status').textContent = '💡 Écran maintenu allumé pour la soirée';
-      wakeLock.addEventListener('release', () => {
-        $('wake-status').textContent = '';
-      });
-    }catch(err){
-      console.warn('Wake lock refusé :', err);
+    if(!fbReady){
+      card.innerHTML = `<p class="qr-error">Firebase n'est pas actif. Impossible de générer le QR Code de téléchargement.</p>`;
+      box.appendChild(card);
+      return;
     }
-  }
-  document.addEventListener('visibilitychange', async () => {
-    if(document.visibilityState === 'visible'){
-      await requestWakeLock();
+
+    if(currentUploadedPhotoUrl){
+      displayQr(card, currentUploadedPhotoUrl);
+    } else {
+      card.innerHTML = `
+        <div class="qr-spinner"></div>
+        <p>Génération du QR Code en cours...</p>
+      `;
+      box.appendChild(card);
+
+      const check = setInterval(() => {
+        if(currentUploadedPhotoUrl){
+          clearInterval(check);
+          card.innerHTML = '';
+          displayQr(card, currentUploadedPhotoUrl);
+        }
+      }, 500);
+
+      setTimeout(() => clearInterval(check), 15000);
     }
   });
-  requestWakeLock();
-  document.addEventListener('click', () => { if(!wakeLock) requestWakeLock(); }, { once:true });
 
-})();
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch((err) => {
-      console.warn('Service worker non enregistré :', err);
+  function displayQr(container, url){
+    const qrDiv = document.createElement('div');
+    new QRCode(qrDiv, {
+      text: url,
+      width: 150,
+      height: 150,
+      colorDark: "#222938",
+      colorLight: "#ffffff"
     });
-  });
-}
+    container.appendChild(qrDiv);
+    const p = document.createElement('p');
+    p.textContent = "Scannez avec votre téléphone pour emporter votre photo !";
+    container.appendChild(p);
+    $('qr-transfer-box').innerHTML = '';$('qr-transfer-box').appendChild(container);
+  }
+
+  // ==========================================
+  // ENREGISTREMENT DU SERVICE WORKER (PWA)
+  // ==========================================
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(err => {
+        console.warn('Erreur Service Worker :', err);
+      });
+    });
+  }
+})();
 </script>
 </body>
 </html>
